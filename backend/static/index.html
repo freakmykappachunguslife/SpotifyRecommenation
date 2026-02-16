@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Gago Glazers – Search & Similar</title>
+  <style>
+    body { font-family: system-ui; max-width: 600px; margin: 2rem auto; padding: 0 1rem; }
+    input { padding: 0.5rem; width: 70%; }
+    button { padding: 0.5rem 1rem; margin: 0 0.25rem 0.25rem 0; }
+    .toolbar { margin: 0.5rem 0; }
+    ul { list-style: none; padding: 0; }
+    li { margin: 0.5rem 0; padding: 0.5rem; background: #f0f0f0; border-radius: 4px; }
+    .similarity { color: #666; font-size: 0.9rem; }
+  </style>
+</head>
+<body>
+  <h1>Gago Glazers</h1>
+  <p>Search tracks, then get similar by audio features (cosine similarity).</p>
+  <form id="search">
+    <input type="text" id="q" placeholder="Search tracks..." />
+    <button type="submit">Search</button>
+  </form>
+  <div id="results"></div>
+  <script>
+    const api = window.location.origin + '/api';
+
+    // State: what we're showing so we can sort and clear
+    let viewMode = 'search';  // 'search' | 'similar'
+    let searchTracks = [];   // [{ id, name, artist, ... }]
+    let similarList = [];     // [{ track: {...}, similarity: number }]
+    let similarTitle = '';
+
+    function renderSearchList(tracks) {
+      if (tracks.length === 0) {
+        document.getElementById('results').innerHTML = '<p>No results. Try a search or click Similar on a track.</p>';
+        return;
+      }
+      const list = tracks.map(t =>
+        `<li>${escapeHtml(t.name)} – ${escapeHtml(t.artist)} <button data-id="${t.id}">Get track</button> <button data-id="${t.id}" class="sim">Similar</button></li>`
+      ).join('');
+      document.getElementById('results').innerHTML =
+        '<h3>Results</h3>' +
+        '<div class="toolbar"><button type="button" id="btnSortAz">Sort A–Z</button> <button type="button" id="btnClear">Clear</button></div>' +
+        '<ul>' + list + '</ul>';
+      document.querySelectorAll('[data-id]').forEach(btn => {
+        btn.onclick = () => btn.classList.contains('sim') ? showSimilar(btn.dataset.id) : showTrack(btn.dataset.id);
+      });
+      document.getElementById('btnSortAz').onclick = sortAz;
+      document.getElementById('btnClear').onclick = clearAll;
+    }
+
+    function renderSimilarList(items, title) {
+      if (items.length === 0) {
+        document.getElementById('results').innerHTML = '<p>No similar tracks found.</p>';
+        return;
+      }
+      const list = items.map(s =>
+        `<li>${escapeHtml(s.track.name)} – ${escapeHtml(s.track.artist)} <span class="similarity">${(s.similarity * 100).toFixed(1)}%</span></li>`
+      ).join('');
+      document.getElementById('results').innerHTML =
+        '<h3>' + escapeHtml(title) + '</h3>' +
+        '<div class="toolbar"><button type="button" id="btnSortAz">Sort A–Z</button> <button type="button" id="btnSortScore">Sort by Score</button> <button type="button" id="btnClear">Clear</button></div>' +
+        '<ul>' + list + '</ul>';
+      document.getElementById('btnSortAz').onclick = sortAz;
+      document.getElementById('btnSortScore').onclick = sortByScore;
+      document.getElementById('btnClear').onclick = clearAll;
+    }
+
+    function escapeHtml(s) {
+      if (s == null) return '';
+      const div = document.createElement('div');
+      div.textContent = s;
+      return div.innerHTML;
+    }
+
+    function sortAz() {
+      if (viewMode === 'search') {
+        searchTracks.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+        renderSearchList(searchTracks);
+      } else {
+        similarList.sort((a, b) => (a.track.name || '').localeCompare(b.track.name || ''));
+        renderSimilarList(similarList, similarTitle);
+      }
+    }
+
+    function sortByScore() {
+      if (viewMode !== 'similar') return;
+      similarList.sort((a, b) => b.similarity - a.similarity);
+      renderSimilarList(similarList, similarTitle);
+    }
+
+    async function clearAll() {
+      try {
+        await fetch(api + '/cache', { method: 'DELETE' });
+      } catch (e) { /* ignore */ }
+      viewMode = 'search';
+      searchTracks = [];
+      similarList = [];
+      similarTitle = '';
+      document.getElementById('results').innerHTML = '<p>Cleared. Enter a new search.</p>';
+    }
+
+    document.getElementById('search').onsubmit = async (e) => {
+      e.preventDefault();
+      const q = document.getElementById('q').value.trim();
+      if (!q) return;
+      const res = await fetch(api + '/search?q=' + encodeURIComponent(q));
+      const data = await res.json();
+      viewMode = 'search';
+      searchTracks = data.tracks || [];
+      renderSearchList(searchTracks);
+    };
+
+    async function showTrack(id) {
+      const res = await fetch(api + '/tracks/' + id);
+      const t = await res.json();
+      alert(JSON.stringify({ name: t.name, artist: t.artist, audio_features: t.audio_features ? 'present' : 'none' }, null, 2));
+    }
+
+    async function showSimilar(id) {
+      const res = await fetch(api + '/tracks/' + id + '/similar?limit=10');
+      const data = await res.json();
+      viewMode = 'similar';
+      similarList = data.similar || [];
+      similarTitle = 'Similar to ' + (similarList[0]?.track?.name || id);
+      renderSimilarList(similarList, similarTitle);
+    }
+  </script>
+</body>
+</html>
