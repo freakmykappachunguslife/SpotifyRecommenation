@@ -15,8 +15,6 @@ Minimal music search and similarity: **Spotify Web API** (search + track + audio
 2. Set in `.env`:
    - `SPOTIFY_CLIENT_ID` – from [Spotify Developer Dashboard](https://developer.spotify.com/dashboard)
    - `SPOTIFY_CLIENT_SECRET`
-3. Never commit `.env` (it’s in `.gitignore`). No redirect URI needed for this app (Client Credentials only).
-
 ---
 
 ## Quick start
